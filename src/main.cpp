@@ -1,4 +1,3 @@
-// #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Wire.h>
@@ -6,6 +5,7 @@
 #include <SPI.h>
 #include <Adafruit_NeoPixel.h>
 #include "time.h"
+#include <ArduinoJson.h>
 
 const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 0;
@@ -23,16 +23,12 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ80
 const char *ssid = "iPhone";
 const char *password = "hellohello";
 
-const int HTTP_PORT = 80;
-const String HTTP_METHOD = "GET";      // or "POST"
-const char HOST_NAME[] = "google.com"; // hostname of web server:
-const String PATH_NAME = "";
-
 struct color
 {
   int r;
   int g;
   int b;
+  String name;
 };
 
 color busy = {205, 50, 50};
@@ -42,7 +38,7 @@ color out = {0, 128, 255};
 
 color workday[NUMPIXELS];
 
-int fadeAmount = 15;
+int fadeAmount = 20;
 int fadeDelay = 100;
 
 void setAllPixels(color color)
@@ -59,6 +55,9 @@ void initWiFi()
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi ..");
+  tft.setTextColor(TFT_GREEN);
+  tft.drawString("Connecting to WiFi ..", tft.width() / 2 - 50, tft.height() / 2);
+
   int progress = 0;
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -78,13 +77,50 @@ void initWiFi()
   }
   Serial.println("Connected");
   Serial.println(WiFi.localIP());
+  tft.fillScreen(TFT_BLACK);
+}
+
+void ReadWorkDay(String json)
+{
+  DynamicJsonDocument doc(2048);
+  deserializeJson(doc, json);
+
+  for (int i = 0; i < doc["events"].size(); i++)
+  {
+    color statusColor;
+
+    int status = doc["events"][i]["status"];
+    int hour = doc["events"][i]["hour"];
+
+    switch (status)
+    {
+    case 2:
+      statusColor = freetime;
+      break;
+    case 3:
+      statusColor = part;
+      break;
+    case 4:
+      statusColor = busy;
+      break;
+    default:
+      statusColor = out;
+      break;
+    }
+
+    String sensor = doc["events"][i]["meetingNames"];
+    Serial.println(sensor);
+    statusColor.name = sensor;
+
+    workday[hour] = statusColor;
+  }
 }
 
 void get()
 {
   HTTPClient http;
 
-  String serverPath = "https://www.google.co.uk/";
+  String serverPath = "https://theallknowingeye.azurewebsites.net/api/TheAllKnowingEye?code=XT1B9KLLC2hPERu8HFljr4x5L2Rv1g-9t-fDjYB7fvK5AzFuwsVRtQ==&Key=Payroc1!&name=Rory.Hamilton@Payroc.com";
 
   // Your Domain name with URL path or IP address with path
   http.begin(serverPath.c_str());
@@ -97,6 +133,9 @@ void get()
     Serial.print("HTTP Response code: ");
     Serial.println(httpResponseCode);
     String payload = http.getString();
+
+    ReadWorkDay(payload);
+
     Serial.println(payload);
   }
   else
@@ -106,22 +145,6 @@ void get()
   }
   // Free resources
   http.end();
-}
-
-void setWorkDay()
-{
-  workday[0] = freetime;
-  workday[1] = freetime;
-  workday[2] = freetime;
-  workday[3] = freetime;
-  workday[4] = freetime;
-  workday[5] = out;
-  workday[6] = out;
-  workday[7] = out;
-  workday[8] = freetime;
-  workday[9] = freetime;
-  workday[10] = freetime;
-  workday[11] = freetime;
 }
 
 // Returns the Red component of a 32-bit color
@@ -149,6 +172,11 @@ void fadeCurrentTime()
   char timeHour[3];
   strftime(timeHour, 3, "%I", &timeinfo);
   int hour = String(timeHour).toInt() - 1;
+
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_DARKGREEN);
+  tft.setCursor(0, 0, 2);
+  tft.println(workday[hour].name);
 
   uint32_t colorInt = pixels.getPixelColor(hour);
 
@@ -187,8 +215,6 @@ void fadeCurrentTime()
   }
 }
 
-
-
 void setup()
 {
   Serial.begin(115200);
@@ -197,19 +223,17 @@ void setup()
   pixels.begin();
   setAllPixels(out);
 
-  setWorkDay();
-
   tft.init();
   tft.setRotation(1);
-  tft.fillScreen(TFT_WHITE);
-
-  // tft.drawString("LeftButton:", tft.width() / 2, tft.height() / 2 - 16);
+  tft.fillScreen(TFT_BLACK);
 
   initWiFi();
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-  // get();
+  setAllPixels(out);
+
+  get();
 }
 
 void loop()
@@ -221,17 +245,7 @@ void loop()
     pixels.setPixelColor(i, pixels.Color(col.r, col.g, col.b));
   }
 
-  pixels.setPixelColor(2, pixels.Color(busy.r, busy.g, busy.b));
-  pixels.setPixelColor(3, pixels.Color(part.r, part.g, part.b));
-
   pixels.show();
 
   fadeCurrentTime();
-
-  tft.setCursor(0, 0, 2);
-  // Set the font colour to be white with a black background, set text size multiplier to 1
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(1);
-  // We can now plot text on screen using the "print" class
-  tft.println("Hello World!");
 }
