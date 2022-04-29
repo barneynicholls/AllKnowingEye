@@ -31,14 +31,14 @@ struct color
   String name;
 };
 
-color busy = {205, 50, 50};
-color freetime = {50, 205, 50};
+color busy = {255, 0, 0};
+color freetime = {0, 255, 0};
 color part = {255, 191, 0};
-color out = {0, 128, 255};
+color out = {0, 0, 255};
 
 color workday[NUMPIXELS];
 
-int fadeAmount = 20;
+int fadeAmount = 50;
 int fadeDelay = 100;
 
 void setAllPixels(color color)
@@ -96,6 +96,8 @@ void ReadWorkDay(String json)
     {
     case 2:
       statusColor = freetime;
+      if (hour == 5 || hour == 6 || hour == 7)
+        statusColor = out;
       break;
     case 3:
       statusColor = part;
@@ -165,19 +167,8 @@ uint8_t Blue(uint32_t color)
   return color & 0xFF;
 }
 
-void fadeCurrentTime()
+void fadeCurrentTime(int hour)
 {
-  struct tm timeinfo;
-  getLocalTime(&timeinfo);
-  char timeHour[3];
-  strftime(timeHour, 3, "%I", &timeinfo);
-  int hour = String(timeHour).toInt() - 1;
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_DARKGREEN);
-  tft.setCursor(0, 0, 2);
-  tft.println(workday[hour].name);
-
   uint32_t colorInt = pixels.getPixelColor(hour);
 
   color current = {Red(colorInt), Green(colorInt), Blue(colorInt)};
@@ -215,6 +206,14 @@ void fadeCurrentTime()
   }
 }
 
+void updateScreen(int hour)
+{
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_DARKGREEN);
+  tft.setCursor(0, 0, 2);
+  tft.println(workday[hour].name);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -238,7 +237,6 @@ void setup()
 
 void loop()
 {
-
   for (int i = 0; i < NUMPIXELS; i++)
   {
     color col = workday[i];
@@ -247,5 +245,15 @@ void loop()
 
   pixels.show();
 
-  fadeCurrentTime();
+  struct tm timeinfo;
+  getLocalTime(&timeinfo);
+  char timeHour[3];
+  strftime(timeHour, 3, "%I", &timeinfo);
+  int hour = String(timeHour).toInt() - 1;
+
+  updateScreen(hour);
+
+  fadeCurrentTime(hour);
+
+  delay(1000);
 }
